@@ -21,6 +21,13 @@ One screen for every macOS privacy permission your terminal has — instead of c
 brew install mahdi/tap/whocan
 ```
 
+or tap once, then use the short name:
+
+```sh
+brew tap mahdi/tap
+brew install whocan
+```
+
 Or build from source (Xcode or the Swift toolchain required):
 
 ```sh
@@ -36,6 +43,8 @@ whocan --json        # machine-readable output
 whocan open camera   # jump straight to that pane in System Settings
 ```
 
+Color is disabled automatically when output isn't a terminal, or when `NO_COLOR` is set.
+
 Keys for `open`: `accessibility screen input camera microphone contacts calendars reminders photos location bluetooth speech automation fda files devtools network`
 
 ## How it works
@@ -47,7 +56,7 @@ It only uses Apple's public, non-prompting preflight APIs (`AXIsProcessTrusted`,
 ### Limitations
 
 - **Accessibility, Screen Recording, Input Monitoring** can only report granted vs. not granted, so "off" means denied *or* never asked.
-- **Automation** is checked against a few common targets (System Events, Finder, Terminal, Safari), not every app.
+- **Automation** is checked against a few common targets (System Events, Finder, Terminal, Safari), not every app. macOS can only answer for apps that are running, so targets that aren't open are listed as unchecked.
 - **Full Disk Access, Files & Folders, Developer Tools, Local Network** have no safe public API; `whocan` links you to the pane instead.
 
 ## License

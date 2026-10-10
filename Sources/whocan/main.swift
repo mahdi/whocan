@@ -20,6 +20,13 @@ import Foundation
 import Photos
 import Speech
 
+// Color only when writing to a terminal and NO_COLOR (https://no-color.org) is unset.
+let useColor = isatty(STDOUT_FILENO) != 0 && ProcessInfo.processInfo.environment["NO_COLOR"] == nil
+
+func paint(_ code: String, _ text: String) -> String {
+    useColor ? "\u{1B}[\(code)m\(text)\u{1B}[0m" : text
+}
+
 enum Status: String {
     case granted = "granted"
     case denied = "denied"
@@ -30,10 +37,10 @@ enum Status: String {
 
     var symbol: String {
         switch self {
-        case .granted: return "\u{1B}[32m●\u{1B}[0m"
-        case .denied: return "\u{1B}[31m●\u{1B}[0m"
-        case .restricted: return "\u{1B}[33m●\u{1B}[0m"
-        case .notAsked, .off, .unknown: return "\u{1B}[90m○\u{1B}[0m"
+        case .granted: return paint("32", "●")
+        case .denied: return paint("31", "●")
+        case .restricted: return paint("33", "●")
+        case .notAsked, .off, .unknown: return paint("90", "○")
         }
     }
 }
@@ -136,9 +143,10 @@ let checks: [Check] = [
         }
     },
     Check(key: "automation", name: "Automation", pane: "Privacy_Automation") {
-        // Non-prompting check against a few common Apple Event targets.
+        // Non-prompting check against a few common Apple Event targets. macOS can only
+        // answer for targets that are running; others return procNotFound.
         let targets = ["com.apple.systemevents", "com.apple.finder", "com.apple.Terminal", "com.apple.Safari"]
-        var allowed: [String] = [], denied: [String] = []
+        var allowed: [String] = [], denied: [String] = [], notRunning: [String] = []
         for id in targets {
             var desc = AEAddressDesc()
             guard AECreateDesc(typeApplicationBundleID, id, id.utf8.count, &desc) == noErr else { continue }
@@ -147,10 +155,17 @@ let checks: [Check] = [
             let short = id.split(separator: ".").last.map(String.init) ?? id
             if err == noErr { allowed.append(short) }
             else if err == OSStatus(errAEEventNotPermitted) { denied.append(short) }
+            else if err == OSStatus(procNotFound) { notRunning.append(short) }
         }
-        if !allowed.isEmpty { return (.granted, allowed.joined(separator: ", ")) }
-        if !denied.isEmpty { return (.denied, denied.joined(separator: ", ")) }
-        return (.notAsked, "common targets")
+        var parts: [String] = []
+        if !allowed.isEmpty { parts.append(allowed.joined(separator: ", ")) }
+        if !denied.isEmpty { parts.append("denied: " + denied.joined(separator: ", ")) }
+        if !notRunning.isEmpty { parts.append("not running, unchecked: " + notRunning.joined(separator: ", ")) }
+        let note = parts.isEmpty ? nil : parts.joined(separator: " · ")
+        if !allowed.isEmpty { return (.granted, note) }
+        if !denied.isEmpty { return (.denied, note) }
+        if notRunning.count == targets.count { return (.unknown, note) }
+        return (.notAsked, note)
     },
     // No public, non-intrusive API exists for these; link to the pane instead.
     Check(key: "fda", name: "Full Disk Access", pane: "Privacy_AllFiles") { (.unknown, "check in Settings") },
@@ -176,7 +191,7 @@ func settingsURL(_ pane: String) -> URL {
 
 // MARK: - Main
 
-let version = "0.1.0"
+let version = "0.1.1"
 let args = Array(CommandLine.arguments.dropFirst())
 
 if args.contains("--version") || args.contains("-v") {
@@ -224,11 +239,11 @@ if args.contains("--json") {
 }
 
 let width = checks.map(\.name.count).max()!
-print("\n  Privacy permissions for \u{1B}[1m\(terminalName())\u{1B}[0m\n")
+print("\n  Privacy permissions for \(paint("1", terminalName()))\n")
 for (c, s, note) in results {
     let name = c.name.padding(toLength: width, withPad: " ", startingAt: 0)
     let status = s.rawValue.padding(toLength: 10, withPad: " ", startingAt: 0)
-    let extra = note.map { "\u{1B}[90m\($0)\u{1B}[0m" } ?? ""
+    let extra = note.map { paint("90", $0) } ?? ""
     print("  \(s.symbol) \(name)  \(status) \(extra)")
 }
-print("\n  \u{1B}[90mwhocan open <key> to jump to a pane · keys: \(checks.map(\.key).joined(separator: " "))\u{1B}[0m\n")
+print("\n  " + paint("90", "whocan open <key> to jump to a pane · keys: \(checks.map(\.key).joined(separator: " "))") + "\n")
